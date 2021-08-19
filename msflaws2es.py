@@ -9,6 +9,7 @@ from elasticsearch import Elasticsearch
 from elasticsearch import helpers
 from elasticsearch.connection import create_ssl_context
 import urllib.request as urlrequest
+from dateutil.relativedelta import relativedelta
 
 def ingestByBulk(esConnection, esIndex, dtNow, docsToIngest):
 
@@ -170,42 +171,32 @@ def getMsFlaws(strUrl, strUserAgent, strProxy):
         strResponse = req.read().decode('utf8')
 
         return strResponse     
-    except:
-        print("[-] Error on trying to get the response from ", strUrl)
+    except Exception as e:
+        print("[-] Error on trying to get the response from ", strUrl, " ", str(e))
         return None
 
-def main():    
-    # Parse arguments
-    parser = argparse.ArgumentParser(description="If no argument is given, the latest month is ingested.")
-    parser.add_argument("--month", help="Use this month", type=str)
-    parser.add_argument("--proxy", help="Proxy to use", type=str)
-    parser.add_argument("--basepath", help="Use this path for microsoft cvrf", type=str, default="https://api.msrc.microsoft.com/cvrf/v2.0/cvrf/")
-
-    # Elastic output
-    parser.add_argument("--elastichost", help="Use this elasticsearch host for output (default=127.0.0.1)", type=str)
-    parser.add_argument("--elasticindex", help="Use this elasticsearch index for output. Example: msflaws-#yyyy#", type=str)
-    parser.add_argument("--elasticuser", help="Use this elasticsearch user (if required by the elastic server)", type=str)
-    parser.add_argument("--elasticpassword", help="Use this elasticsearch password (if required by the elastic server)", type=str)
-    parser.add_argument("--elastictls", help="Use if elasticsearch requires https (more common these days)", action="store_true")
-    parser.add_argument("--elasticskipcert", help="If specified no certificate validation occurs when connecting to elasticsearch (using this is NOT recommended of course)", action="store_true")
-    parser.add_argument("--elasticport", help="If you have another port than 9200 for your elasticsearch then specify it here", type=int)
-    parser.add_argument("--elastictimefield", help="Set the timefield for elasticsearch (default=@timestamp)", type=str)    
-    args = parser.parse_args()  
-
-    strUserAgent =      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+def checkMonth(strMonth, args, dtNow):
     strLastUpdate =     None
     jDoc =              None
-    dtNow =             datetime.now()
+    strUserAgent =      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     strBasePath =       args.basepath # "https://api.msrc.microsoft.com/cvrf/v2.0/cvrf/"  # https://api.msrc.microsoft.com/cvrf/v2.0/cvrf/2021-Aug
-    strMonth =          str(dtNow.year) + "-" + str(dtNow.strftime("%b"))
-    esConnection =      createElasticConnection(args)
-    
-
     if(args.month != None):
         strMonth = args.month
 
+    if(args.useragent != None):
+        strUserAgent = args.useragent 
+
+    esConnection =      createElasticConnection(args)
+    if(esConnection == None):
+        print("[-] Warning: elasticsearch connection not defined hence nothing will be ingested")
+
     print("[+] Downloading ", strMonth, " ...")
     strFlaws = getMsFlaws(strBasePath + strMonth, strUserAgent, args.proxy)
+
+    if(strFlaws == None):
+        print("[-] Could not continue parsing non-existent json, returning")
+        return
+
     jResponse = json.loads(strFlaws)
     
 
@@ -263,6 +254,42 @@ def main():
         # Write the history file
         writeDocForMonth(strMonth, jResponse)
     
+
+def main():    
+    # Parse arguments
+    parser = argparse.ArgumentParser(description="If no argument is given, the latest month is ingested.")
+    parser.add_argument("--month", help="Use this month", type=str)
+    parser.add_argument("--proxy", help="Proxy to use", type=str)
+    parser.add_argument("--start", help="If we should ingest from a specific month, then this is it. Example: 2021-Sep", type=str)
+    parser.add_argument("--useragent", help="User agent to use for requests", type=str)
+    parser.add_argument("--basepath", help="Use this path for microsoft cvrf", type=str, default="https://api.msrc.microsoft.com/cvrf/v2.0/cvrf/")
+
+    # Elastic output
+    parser.add_argument("--elastichost", help="Use this elasticsearch host for output (default=127.0.0.1)", type=str)
+    parser.add_argument("--elasticindex", help="Use this elasticsearch index for output. Example: msflaws-#yyyy#", type=str)
+    parser.add_argument("--elasticuser", help="Use this elasticsearch user (if required by the elastic server)", type=str)
+    parser.add_argument("--elasticpassword", help="Use this elasticsearch password (if required by the elastic server)", type=str)
+    parser.add_argument("--elastictls", help="Use if elasticsearch requires https (more common these days)", action="store_true")
+    parser.add_argument("--elasticskipcert", help="If specified no certificate validation occurs when connecting to elasticsearch (using this is NOT recommended of course)", action="store_true")
+    parser.add_argument("--elasticport", help="If you have another port than 9200 for your elasticsearch then specify it here", type=int)
+    parser.add_argument("--elastictimefield", help="Set the timefield for elasticsearch (default=@timestamp)", type=str)    
+    args = parser.parse_args()    
+
+    dtNow =             datetime.now()
+    strMonth =          str(dtNow.year) + "-" + str(dtNow.strftime("%b"))    
+
+    if(args.start != None):
+        dtStart = datetime.strptime(args.start, '%Y-%b')
+        dtEnd =  dtNow + relativedelta(months=+1)
+
+        while(dtStart.month < dtEnd.month or dtStart.year < dtEnd.year):
+            strMonth = str(dtStart.year) + "-" + str(dtStart.strftime("%b"))
+            checkMonth(strMonth, args, dtNow)
+            dtStart =  dtStart + relativedelta(months=+1)
+
+    else:
+        checkMonth(strMonth, args, dtNow)
+
     print("[+] Done!")
 
 # Old fashioned python syntax
