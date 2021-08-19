@@ -6,10 +6,29 @@ import os
 import argparse
 from datetime import datetime
 from elasticsearch import Elasticsearch
+from elasticsearch import helpers
 from elasticsearch.connection import create_ssl_context
 import urllib.request as urlrequest
 
-def ingestElasticsearch(esConnection, esIndex, esTimestamp, doc, dtNow, uniqueId):
+def ingestByBulk(esConnection, esIndex, dtNow, docsToIngest):
+
+    allDocsBulkFormatted = [
+    {
+        "_index": esIndex,
+        "_source":   esDoc
+    }
+    for esDoc in docsToIngest
+    ]
+
+    helpers.bulk(esConnection, allDocsBulkFormatted)    
+
+def timefunc(dtNow):
+    if(isinstance(dtNow, str)):
+        return dtNow.replace("Z", "")
+        
+    return dtNow.strftime("%Y-%m-%d") + "T" + dtNow.strftime("%H:%m:%S")
+
+def prepareElasticsearchDoc(esConnection, esIndex, esTimestamp, doc, dtNow, uniqueId):
     print("[+] shipping to elasticsearch index", esIndex)
     
     strFinalIndex = esIndex.replace("#yyyy#", str(dtNow.year))
@@ -21,9 +40,9 @@ def ingestElasticsearch(esConnection, esIndex, esTimestamp, doc, dtNow, uniqueId
     
     # Set the timestamp to the last revision
     if(doc['RevisionHistory'] != None):
-        doc[esTimestamp] = doc['RevisionHistory'][len(doc['RevisionHistory'])-1]['Date']
+        doc[esTimestamp] = timefunc( doc['RevisionHistory'][len(doc['RevisionHistory'])-1]['Date'])
     else:
-        doc[esTimestamp] = dtNow
+        doc[esTimestamp] = timefunc(dtNow)
 
     highestBaseScore = 0.0
     highestTemporalScore = 0.0
@@ -43,10 +62,11 @@ def ingestElasticsearch(esConnection, esIndex, esTimestamp, doc, dtNow, uniqueId
         doc['highestbasescore'] = highestBaseScore
         doc['highesttemporalscore'] = highestTemporalScore
 
-    doc['ingesttime'] = dtNow           # Well, maybe not nice to hard code this.
+    doc['ingesttime'] = timefunc(dtNow)           # Well, maybe not nice to hard code this.
     doc['vulnidentifier'] = uniqueId    # Well, maybe not nice to hard code this.
 
-    res = esConnection.index(index=strFinalIndex, body=doc)
+    return doc
+    #res = esConnection.index(index=strFinalIndex, body=doc)
     # print(res['result'])
 
 def getHistoryFileDir():
@@ -203,6 +223,8 @@ def main():
     # Ingest the changes to Elastic
     if ('Vulnerability' in jResponse):    
 
+        docsToIngest = []
+
         # First, just log some debug info making sure that the json blob is correctly formatted
         for v in jResponse['Vulnerability']:
             strCVE = ""
@@ -227,11 +249,16 @@ def main():
                         print("[+] New version. Should ingest ", strCVE, ".", strTitle)
 
                         if(esConnection != None):
-                            ingestElasticsearch(esConnection, args.elasticindex, args.elastictimefield, v, dtNow, strCVE + "." + strTitle)
+                            fixedDoc = prepareElasticsearchDoc(esConnection, args.elasticindex, args.elastictimefield, v, dtNow, strCVE + "." + strTitle)
+                            docsToIngest.append(fixedDoc)
                 else:
                     print("[+] No previous doc so just ingest ", strCVE, ".", strTitle)
                     if(esConnection != None):
-                        ingestElasticsearch(esConnection, args.elasticindex, args.elastictimefield, v, dtNow, strCVE + "." + strTitle)                    
+                        fixedDoc = prepareElasticsearchDoc(esConnection, args.elasticindex, args.elastictimefield, v, dtNow, strCVE + "." + strTitle)
+                        docsToIngest.append(fixedDoc)     
+
+        if(len(docsToIngest) > 0):
+            ingestByBulk(esConnection, args.elasticindex, dtNow, docsToIngest)            
 
         # Write the history file
         writeDocForMonth(strMonth, jResponse)
