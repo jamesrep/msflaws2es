@@ -249,7 +249,11 @@ def checkMonth(strMonth, args, dtNow):
                         docsToIngest.append(fixedDoc)     
 
         if(len(docsToIngest) > 0):
-            ingestByBulk(esConnection, args.elasticindex, dtNow, docsToIngest)            
+            strFinalIndex = args.elasticindex.replace("#yyyy#", str(dtNow.year))
+            strFinalIndex = strFinalIndex.replace("#mm#", str(dtNow.month))
+            strFinalIndex = strFinalIndex.replace("#dd#", str(dtNow.day))
+
+            ingestByBulk(esConnection, strFinalIndex, dtNow, docsToIngest)            
 
         # Write the history file
         writeDocForMonth(strMonth, jResponse)
