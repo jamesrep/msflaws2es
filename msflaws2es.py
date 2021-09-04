@@ -44,10 +44,11 @@ def prepareElasticsearchDoc(esConnection, esIndex, esTimestamp, doc, dtNow, uniq
     highestBaseScore = 0.0
     highestTemporalScore = 0.0
 
-    # Quite handy to parse out the highest scores.
+    # Quite handy to parse out the highest scores. Sorting may also need to convert
+    # objects to float (json inconsistencies have been seen in this dataset), hence some wonky sorting.
     if(doc['CVSSScoreSets'] != None):
         for bscore in doc['CVSSScoreSets']:
-            tmpScore = float(bscore['BaseScore'])
+            tmpScore = float(bscore['BaseScore']) 
 
             if(tmpScore > highestBaseScore):
                 highestBaseScore = tmpScore
