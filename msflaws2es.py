@@ -31,10 +31,6 @@ def timefunc(dtNow):
 
 def prepareElasticsearchDoc(esConnection, esIndex, esTimestamp, doc, dtNow, uniqueId):
     print("[+] shipping to elasticsearch index", esIndex)
-    
-    strFinalIndex = esIndex.replace("#yyyy#", str(dtNow.year))
-    strFinalIndex = strFinalIndex.replace("#mm#", str(dtNow.month))
-    strFinalIndex = strFinalIndex.replace("#dd#", str(dtNow.day))
 
     if(esTimestamp == None):
         esTimestamp = "@timestamp"
@@ -67,8 +63,6 @@ def prepareElasticsearchDoc(esConnection, esIndex, esTimestamp, doc, dtNow, uniq
     doc['vulnidentifier'] = uniqueId    # Well, maybe not nice to hard code this.
 
     return doc
-    #res = esConnection.index(index=strFinalIndex, body=doc)
-    # print(res['result'])
 
 def getHistoryFileDir():
     strScriptPath = os.path.dirname( os.path.abspath(__file__))
