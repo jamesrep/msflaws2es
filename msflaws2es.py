@@ -29,9 +29,7 @@ def timefunc(dtNow):
         
     return dtNow.strftime("%Y-%m-%d") + "T" + dtNow.strftime("%H:%m:%S")
 
-def prepareElasticsearchDoc(esConnection, esIndex, esTimestamp, doc, dtNow, uniqueId):
-    print("[+] shipping to elasticsearch index", esIndex)
-
+def prepareElasticsearchDoc(esConnection, esTimestamp, doc, dtNow, uniqueId):
     if(esTimestamp == None):
         esTimestamp = "@timestamp"
     
@@ -235,12 +233,12 @@ def checkMonth(strMonth, args, dtNow):
                         print("[+] New version. Should ingest ", strCVE, ".", strTitle)
 
                         if(esConnection != None):
-                            fixedDoc = prepareElasticsearchDoc(esConnection, args.elasticindex, args.elastictimefield, v, dtNow, strCVE + "." + strTitle)
+                            fixedDoc = prepareElasticsearchDoc(esConnection,  args.elastictimefield, v, dtNow, strCVE + "." + strTitle)
                             docsToIngest.append(fixedDoc)
                 else:
                     print("[+] No previous doc so just ingest ", strCVE, ".", strTitle)
                     if(esConnection != None):
-                        fixedDoc = prepareElasticsearchDoc(esConnection, args.elasticindex, args.elastictimefield, v, dtNow, strCVE + "." + strTitle)
+                        fixedDoc = prepareElasticsearchDoc(esConnection, args.elastictimefield, v, dtNow, strCVE + "." + strTitle)
                         docsToIngest.append(fixedDoc)     
 
         if(len(docsToIngest) > 0):
